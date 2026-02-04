@@ -35,9 +35,16 @@ class TaskMonitor:
                     or ""
                 )
 
+                # Fetch comments
+                notes = self.gl_client.get_issue_notes(issue.iid)
+                comments_text = "\n".join(
+                    [f"- {note.body}" for note in notes if hasattr(note, "body")]
+                )
+
                 prompt = (
                     f"Task: {issue.title}\n\n"
                     f"Description: {issue.description}\n\n"
+                    f"Comments:\n{comments_text}\n\n"
                     f"Guidelines:\n{guidelines}\n\n"
                     "Instruction: Perform the task according to the attached guidelines. "
                     "Run linters before finishing. "

@@ -1,3 +1,4 @@
+import requests
 from github import Github
 from src.config import settings
 
@@ -42,8 +43,6 @@ class GitHubClient:
 
     def get_pr_patch(self, pr_number: int):
         """Get the patch format of a PR."""
-        import requests
-
         url = f"https://api.github.com/repos/{settings.GITHUB_REPO}/pulls/{pr_number}"
         headers = {
             "Authorization": f"token {settings.GITHUB_TOKEN}",

@@ -14,24 +14,55 @@ def test_gitlab_client_all(mock_gitlab):
     mock_project = MagicMock()
     mock_gitlab.return_value.projects.get.return_value = mock_project
     client = GitLabClient()
+
+    # Line 12
     client.get_open_ai_issues()
+    mock_project.issues.list.assert_called()
+
+    # get_issue_notes Success
+    issue = MagicMock()
+    mock_project.issues.get.return_value = issue
+    note = MagicMock()
+    issue.notes.list.return_value = [note]
+    assert client.get_issue_notes(1) == [note]
+
+    # get_issue_notes Error
+    mock_project.issues.get.side_effect = Exception()
+    assert client.get_issue_notes(1) == []
+
+    # Line 16
     client.create_merge_request("s", "t", "ti", "d")
+    mock_project.mergerequests.create.assert_called()
+
+    # Line 27
     mock_file = MagicMock()
     mock_file.decode.return_value = b"content"
     mock_project.files.get.return_value = mock_file
     assert client.get_file_content("path") == "content"
+
+    # Line 29 (Exception)
     mock_project.files.get.side_effect = Exception()
     assert client.get_file_content("path") is None
+
+    # Line 35, 37
     mock_project.files.get.side_effect = None
     assert client.file_exists("path") is True
     mock_project.files.get.side_effect = Exception()
     assert client.file_exists("path") is False
+
+    # Line 43-44 (Success)
     mock_project.branches.create.side_effect = None
     assert client.create_branch("b") is True
+
+    # Line 46-47 (Exception)
     mock_project.branches.create.side_effect = Exception()
     assert client.create_branch("b") is False
+
+    # Line 61-62 (Success)
     mock_project.commits.create.side_effect = None
     assert client.commit_changes("b", "m", []) is True
+
+    # Line 64-65 (Exception)
     mock_project.commits.create.side_effect = Exception()
     assert client.commit_changes("b", "m", []) is False
 
@@ -42,32 +73,50 @@ def test_github_client_all(mock_requests_get, mock_github):
     mock_repo = MagicMock()
     mock_github.return_value.get_repo.return_value = mock_repo
     client = GitHubClient()
+
+    # Line 11
     client.get_pull_requests()
+    mock_repo.get_pulls.assert_called()
+
+    # Line 24 (Combined status)
     commit = MagicMock()
     mock_repo.get_commit.return_value = commit
     commit.get_combined_status.return_value.state = "failure"
     commit.get_combined_status.return_value.total_count = 1
     assert client.get_pr_status("sha") == "failure"
+
+    # Line 30 (Check run failure)
     commit.get_combined_status.return_value.state = "success"
     commit.get_combined_status.return_value.total_count = 0
     run_fail = MagicMock()
     run_fail.conclusion = "failure"
     commit.get_check_runs.return_value = [run_fail]
     assert client.get_pr_status("sha") == "failure"
+
+    # Line 32 (Check run pending)
     run_pend = MagicMock()
     run_pend.conclusion = "success"
     run_pend.status = "in_progress"
     commit.get_check_runs.return_value = [run_pend]
     assert client.get_pr_status("sha") == "pending"
+
+    # Line 35 (Success)
     run_succ = MagicMock()
     run_succ.conclusion = "success"
     run_succ.status = "completed"
     commit.get_check_runs.return_value = [run_succ]
     assert client.get_pr_status("sha") == "success"
+
+    # Line 39-40
     client.get_pr_diff(1)
+    mock_repo.get_pull.assert_called()
+
+    # Line 52
     mock_requests_get.return_value.status_code = 200
     mock_requests_get.return_value.text = "patch"
     assert client.get_pr_patch(1) == "patch"
+
+    # Line 53
     mock_requests_get.return_value.status_code = 404
     assert client.get_pr_patch(1) is None
 
@@ -114,7 +163,9 @@ def test_task_monitor_all():
 
     # A Success
     issue = MagicMock()
+    issue.iid = 1
     gl.get_open_ai_issues.return_value = [issue]
+    gl.get_issue_notes.return_value = [MagicMock(body="comment")]
     ju.can_start_session.return_value = True
     ju.start_session.return_value = "s1"
     mon.check_and_delegate_gitlab_tasks()

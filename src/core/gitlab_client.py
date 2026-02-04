@@ -14,6 +14,15 @@ class GitLabClient:
         """Fetch open issues with 'AI' label."""
         return self.project.issues.list(state="opened", labels=["AI"])
 
+    def get_issue_notes(self, issue_iid: int):
+        """Fetch comments (notes) for a specific issue."""
+        try:
+            issue = self.project.issues.get(issue_iid)
+            return issue.notes.list()
+        except Exception as e:
+            logger.error(f"Error fetching notes for issue #{issue_iid}: {e}")
+            return []
+
     def create_merge_request(
         self, source_branch: str, target_branch: str, title: str, description: str
     ):
