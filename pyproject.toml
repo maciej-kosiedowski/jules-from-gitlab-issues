@@ -1,0 +1,22 @@
+[project]
+name = "ai-task-orchestrator"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic-settings>=2.12.0",
+    "pygithub>=2.8.1",
+    "python-gitlab>=8.0.0",
+    "requests>=2.32.5",
+]
+
+[dependency-groups]
+dev = [
+    "black>=26.1.0",
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.15.0",
+    "types-requests>=2.32.4.20260107",
+]
