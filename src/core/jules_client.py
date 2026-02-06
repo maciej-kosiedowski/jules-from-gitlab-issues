@@ -18,12 +18,12 @@ class JulesClient:
         self._lock = threading.Lock()
 
     def _get(self, endpoint: str, params: Optional[Dict] = None):
-        response = requests.get(f"{self.BASE_URL}/{endpoint}", headers=self.headers, params=params)
+        response = requests.get(f"{self.BASE_URL}/{endpoint}", headers=self.headers, params=params, timeout=30)
         response.raise_for_status()
         return response.json()
 
     def _post(self, endpoint: str, data: Optional[Dict] = None):
-        response = requests.post(f"{self.BASE_URL}/{endpoint}", headers=self.headers, json=data)
+        response = requests.post(f"{self.BASE_URL}/{endpoint}", headers=self.headers, json=data, timeout=30)
         response.raise_for_status()
         return response.json()
 
