@@ -47,7 +47,7 @@ jobs:
   docker-publish:
     needs: quality-check # Wait for tests to pass before building Docker
     runs-on: ubuntu-latest
-    if: (github.ref == "refs/heads/master" || github.ref == "refs/heads/main") && github.event_name == "push"
+    if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && github.event_name == 'push'
 
     steps:
       - name: Checkout code
