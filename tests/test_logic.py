@@ -18,12 +18,13 @@ def test_task_monitor_delegation():
     db.get_active_sessions.return_value = []
 
     jules_client.create_session.return_value = {"id": "sess_1"}
+    jules_client.get_active_sessions_count_from_api.return_value = 0
 
     monitor = TaskMonitor(gl_client, gh_client, jules_client, db)
-    monitor.check_and_delegate_gitlab_tasks()
+    monitor.check_and_delegate_tasks()
 
     jules_client.create_session.assert_called()
-    db.add_session.assert_called_with("sess_1", 1, "gitlab_issue")
+    db.add_session.assert_called_with("sess_1", "1", "gitlab_issue")
 
 @patch("requests.get")
 def test_pr_sync_create_vs_update(mock_get, tmp_path):
