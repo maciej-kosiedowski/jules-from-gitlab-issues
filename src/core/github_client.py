@@ -39,15 +39,12 @@ class GitHubClient:
         pr = self.repo.get_pull(pr_number)
         return pr.get_files()
 
-    def get_pr_patch(self, pr_number: int):
-        """Get the patch format of a PR."""
-        import requests
-        url = f"https://api.github.com/repos/{settings.GITHUB_REPO}/pulls/{pr_number}"
-        headers = {
-            "Authorization": f"token {settings.GITHUB_TOKEN}",
-            "Accept": "application/vnd.github.v3.patch"
-        }
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            return response.text
-        return None
+    def add_pr_comment(self, pr_number: int, message: str):
+        """Add a comment to a Pull Request."""
+        pr = self.repo.get_pull(pr_number)
+        pr.create_issue_comment(message)
+
+    def close_pr(self, pr_number: int):
+        """Close a Pull Request."""
+        pr = self.repo.get_pull(pr_number)
+        pr.edit(state="closed")

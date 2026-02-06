@@ -20,6 +20,13 @@ class GitLabClient:
             "description": description
         })
 
+    def get_merge_request(self, iid: int):
+        """Get a specific Merge Request."""
+        try:
+            return self.project.mergerequests.get(iid)
+        except Exception:
+            return None
+
     def get_file_content(self, file_path: str, ref: str = "main"):
         """Get content of a file from the repository."""
         try:

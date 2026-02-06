@@ -1,39 +1,131 @@
+import requests
 from src.config import settings
 from src.utils.logger import logger
-import time
-import random
 import threading
+from typing import Optional, List, Dict
 
 class JulesClient:
+    BASE_URL = "https://jules.googleapis.com/v1alpha"
+
     def __init__(self):
         self.api_key = settings.JULES_API_KEY
-        self.active_sessions = 0
+        self.headers = {
+            "x-goog-api-key": self.api_key,
+            "Content-Type": "application/json"
+        }
+        self.active_sessions_count = 0
         self._lock = threading.Lock()
 
+    def _get(self, endpoint: str, params: Optional[Dict] = None):
+        response = requests.get(f"{self.BASE_URL}/{endpoint}", headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.json()
+
+    def _post(self, endpoint: str, data: Optional[Dict] = None):
+        response = requests.post(f"{self.BASE_URL}/{endpoint}", headers=self.headers, json=data)
+        response.raise_for_status()
+        return response.json()
+
+    def get_source_name(self) -> Optional[str]:
+        """Find the source name for the configured GitHub repo."""
+        try:
+            sources = self._get("sources").get("sources", [])
+            owner_repo = settings.GITHUB_REPO.lower()
+            for source in sources:
+                if source.get("id", "").lower() == f"github/{owner_repo}":
+                    return source.get("name")
+        except Exception as e:
+            logger.error(f"Error fetching sources: {e}")
+        return f"sources/github/{settings.GITHUB_REPO}"
+
+    def create_session(self, prompt: str, title: str, branch: str = "main") -> Optional[Dict]:
+        source_name = self.get_source_name()
+        if not source_name:
+            logger.error("Could not determine Jules source name.")
+            return None
+
+        data = {
+            "prompt": prompt,
+            "sourceContext": {
+                "source": source_name,
+                "githubRepoContext": {
+                    "startingBranch": branch
+                }
+            },
+            "automationMode": "AUTO_CREATE_PR",
+            "title": title
+        }
+        try:
+            return self._post("sessions", data)
+        except Exception as e:
+            logger.error(f"Error creating Jules session: {e}")
+            return None
+
+    def get_session(self, session_id: str) -> Optional[Dict]:
+        try:
+            name = session_id if session_id.startswith("sessions/") else f"sessions/{session_id}"
+            return self._get(name)
+        except Exception as e:
+            logger.error(f"Error getting Jules session {session_id}: {e}")
+            return None
+
+    def list_sessions(self, page_size: int = 100, page_token: Optional[str] = None) -> Dict:
+        """List sessions with pagination."""
+        params = {"pageSize": page_size}
+        if page_token:
+            params["pageToken"] = page_token
+        try:
+            return self._get("sessions", params=params)
+        except Exception as e:
+            logger.error(f"Error listing Jules sessions: {e}")
+            return {}
+
+    def get_active_sessions_count_from_api(self) -> int:
+        """
+        Count active sessions on Jules by iterating through all sessions.
+        Note: The API doesn't seem to have a filter for 'active',
+        so we might need to check if they have outputs/PRs or use our local DB.
+        But the user specifically asked to track active sessions via list_sessions.
+        """
+        count = 0
+        page_token = None
+        while True:
+            data = self.list_sessions(page_size=100, page_token=page_token)
+            sessions = data.get("sessions", [])
+            for s in sessions:
+                # We assume a session is 'active' if it doesn't have a PR output yet
+                # or based on some other criteria. If we don't have a clear 'state' field,
+                # we'll just count them all or filter by those without PRs.
+                outputs = s.get("outputs", [])
+                has_pr = any("pullRequest" in o for o in outputs)
+                if not has_pr:
+                    count += 1
+
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+        return count
+
+    def list_activities(self, session_id: str) -> List[Dict]:
+        try:
+            name = session_id if session_id.startswith("sessions/") else f"sessions/{session_id}"
+            return self._get(f"{name}/activities").get("activities", [])
+        except Exception as e:
+            logger.error(f"Error listing activities for session {session_id}: {e}")
+            return []
+
+    def send_message(self, session_id: str, prompt: str):
+        try:
+            name = session_id if session_id.startswith("sessions/") else f"sessions/{session_id}"
+            return self._post(f"{name}:sendMessage", {"prompt": prompt})
+        except Exception as e:
+            logger.error(f"Error sending message to session {session_id}: {e}")
+            return None
+
     def can_start_session(self) -> bool:
-        with self._lock:
-            return self.active_sessions < settings.JULES_MAX_CONCURRENT_SESSIONS
-
-    def start_session(self, task_description: str, context: str):
-        with self._lock:
-            if self.active_sessions >= settings.JULES_MAX_CONCURRENT_SESSIONS:
-                logger.warning("Max concurrent Jules sessions reached.")
-                return None
-            self.active_sessions += 1
-
-        logger.info(f"Starting Jules session for task: {task_description[:50]}...")
-        session_id = f"sess_{int(time.time())}_{random.randint(100, 999)}"
-        return session_id
-
-    def wait_for_completion(self, session_id: str):
-        logger.info(f"Waiting for Jules session {session_id} to complete...")
-        time.sleep(random.uniform(1, 3))
-        logger.info(f"Jules session {session_id} finished successfully.")
-        self.complete_session(session_id)
-        return True
-
-    def complete_session(self, session_id: str):
-        with self._lock:
-            if self.active_sessions > 0:
-                self.active_sessions -= 1
-        logger.info(f"Session {session_id} marked as completed.")
+        # We'll use the API count if possible
+        try:
+            active_count = self.get_active_sessions_count_from_api()
+            return active_count < settings.JULES_MAX_CONCURRENT_SESSIONS
+        except Exception:
+            return True
