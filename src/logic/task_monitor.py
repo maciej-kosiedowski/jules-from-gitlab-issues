@@ -14,11 +14,7 @@ class TaskMonitor:
 
     def check_and_delegate_tasks(self):
         """Unified delegation logic for Module A and Module B."""
-        try:
-            active_count = self.jules_client.get_active_sessions_count_from_api()
-        except Exception as e:
-            logger.error(f"Error checking Jules session count: {e}")
-            active_count = settings.JULES_MAX_CONCURRENT_SESSIONS
+        active_count = self.jules_client.get_active_sessions_count_from_api()
 
         logger.info("Checking for new GitLab tasks with 'AI' label...")
         issues = self.gl_client.get_open_ai_issues()
@@ -35,7 +31,11 @@ class TaskMonitor:
                     f"Task: {issue.title}\n\nDescription: {issue.description}\n\nGuidelines:\n{guidelines}\n\n"
                     "Instruction: Complete the task according to the attached guidelines. Run linters. Self-review."
                 )
-                session = self.jules_client.create_session(prompt, f"GL Issue #{issue.iid}: {issue.title}")
+                session = self.jules_client.create_session(
+                    prompt,
+                    f"GL Issue #{issue.iid}: {issue.title}",
+                    settings.STARTING_BRANCH_NAME,
+                )
                 if session:
                     session_id = session.get("id")
                     self.db.add_session(session_id, str(issue.iid), "gitlab_issue")

@@ -3,6 +3,7 @@ from src.config import settings
 from src.utils.logger import logger
 import threading
 from typing import Optional, List, Dict
+import json
 
 class JulesClient:
     BASE_URL = "https://jules.googleapis.com/v1alpha"
@@ -93,12 +94,7 @@ class JulesClient:
             data = self.list_sessions(page_size=100, page_token=page_token)
             sessions = data.get("sessions", [])
             for s in sessions:
-                # We assume a session is 'active' if it doesn't have a PR output yet
-                # or based on some other criteria. If we don't have a clear 'state' field,
-                # we'll just count them all or filter by those without PRs.
-                outputs = s.get("outputs", [])
-                has_pr = any("pullRequest" in o for o in outputs)
-                if not has_pr:
+                if s.get("state", False) == 'IN_PROGRESS':
                     count += 1
 
             page_token = data.get("nextPageToken")

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     # GitHub Config
     GITHUB_TOKEN: str
     GITHUB_REPO: str
+    STARTING_BRANCH_NAME: str = "master"
 
     # Jules AI Config
     JULES_API_KEY: str

@@ -7,3 +7,5 @@ logs/
 .mypy_cache/
 .ruff_cache/
 .idea/
+src/data/
+data/
