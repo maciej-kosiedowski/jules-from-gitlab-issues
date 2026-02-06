@@ -1,3 +1,5 @@
+import base64
+import mimetypes
 import re
 from src.core.gitlab_client import GitLabClient
 from src.core.github_client import GitHubClient
@@ -12,6 +14,60 @@ class TaskMonitor:
         self.gh_client = gh_client
         self.jules_client = jules_client
         self.db = db
+
+
+    def _extract_image_urls(self, text: str) -> list:
+        if not text:
+            return []
+        md_pattern = r'!\[.*?\]\((.*?)\)'
+        html_pattern = r'<img\s+[^>]*src="([^"]+)"'
+        urls = re.findall(md_pattern, text)
+        urls.extend(re.findall(html_pattern, text))
+        return urls
+
+    def _prepare_attachments_and_history(self, issue):
+        notes = self.gl_client.get_issue_notes(issue.iid)
+
+        conversation = []
+        all_text_for_images = [issue.description or ""]
+
+        for note in notes:
+            # Check if system note
+            is_system = getattr(note, 'system', False)
+            if is_system:
+                continue
+
+            author_name = note.author['name'] if isinstance(note.author, dict) else note.author.name
+            body = note.body
+            created_at = note.created_at
+
+            conversation.append(f"Comment by {author_name} at {created_at}:\n{body}\n---")
+            all_text_for_images.append(body or "")
+
+        history_text = "\n".join(conversation)
+
+        image_urls = set()
+        for text in all_text_for_images:
+            urls = self._extract_image_urls(text)
+            for url in urls:
+                image_urls.add(url)
+
+        attachments = []
+        for url in image_urls:
+            content = self.gl_client.download_file(url)
+            if content:
+                mime_type, _ = mimetypes.guess_type(url)
+                if not mime_type:
+                    mime_type = "application/octet-stream"
+
+                b64_data = base64.b64encode(content).decode('utf-8')
+                attachments.append({
+                    "name": url.split("/")[-1],
+                    "mimeType": mime_type,
+                    "data": b64_data
+                })
+
+        return history_text, attachments
 
     def check_and_delegate_tasks(self):
         """Unified delegation logic for Module A and Module B."""
@@ -31,14 +87,20 @@ class TaskMonitor:
                 logger.info(f"Delegating GitLab issue #{issue.iid} to Jules")
                 guidelines = self.gl_client.get_file_content("CONTRIBUTING.md") or \
                              self.gl_client.get_file_content("GUIDELINES.md") or ""
+
+                history_text, attachments = self._prepare_attachments_and_history(issue)
+
                 prompt = (
-                    f"Task: {issue.title}\n\nDescription: {issue.description}\n\nGuidelines:\n{guidelines}\n\n"
+                    f"Task: {issue.title}\n\nDescription: {issue.description}\n\n"
+                    f"Conversation History:\n{history_text}\n\n"
+                    f"Guidelines:\n{guidelines}\n\n"
                     "Instruction: Complete the task according to the attached guidelines. Run linters. Self-review."
                 )
                 session = self.jules_client.create_session(
                     prompt,
                     f"GL Issue #{issue.iid}: {issue.title}",
                     settings.STARTING_BRANCH_NAME,
+                    attachments=attachments
                 )
                 if session:
                     session_id = session.get("id")
