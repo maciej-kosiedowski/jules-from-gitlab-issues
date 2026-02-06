@@ -2,13 +2,16 @@ import requests
 from src.config import settings
 from src.utils.logger import logger
 import threading
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, TYPE_CHECKING
 import json
+
+if TYPE_CHECKING:
+    from src.core.database import Database
 
 class JulesClient:
     BASE_URL = "https://jules.googleapis.com/v1alpha"
 
-    def __init__(self):
+    def __init__(self, db: Optional['Database'] = None):
         self.api_key = settings.JULES_API_KEY
         self.headers = {
             "x-goog-api-key": self.api_key,
@@ -16,6 +19,7 @@ class JulesClient:
         }
         self.active_sessions_count = 0
         self._lock = threading.Lock()
+        self.db = db
 
     def _get(self, endpoint: str, params: Optional[Dict] = None):
         response = requests.get(f"{self.BASE_URL}/{endpoint}", headers=self.headers, params=params)
@@ -85,11 +89,18 @@ class JulesClient:
 
     def get_active_sessions_count_from_api(self) -> int:
         """
-        Count active sessions on Jules by iterating through all sessions.
-        Note: The API doesn't seem to have a filter for 'active',
-        so we might need to check if they have outputs/PRs or use our local DB.
-        But the user specifically asked to track active sessions via list_sessions.
+        Count active sessions.
+        If local database is available, uses it for instant count.
+        Otherwise, iterates through all sessions via API (slow).
         """
+        if self.db:
+            try:
+                # get_active_sessions returns a list of tuples
+                return len(self.db.get_active_sessions())
+            except Exception as e:
+                logger.error(f"Error getting active sessions from DB: {e}")
+                # Fallback to API if DB fails
+
         count = 0
         page_token = None
         while True:

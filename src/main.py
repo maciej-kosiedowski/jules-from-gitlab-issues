@@ -15,7 +15,7 @@ def main():
         db = Database()
         gl_client = GitLabClient()
         gh_client = GitHubClient()
-        jules_client = JulesClient()
+        jules_client = JulesClient(db=db)
 
         task_monitor = TaskMonitor(gl_client, gh_client, jules_client, db)
         pr_sync = PRSync(gl_client, gh_client, db)
