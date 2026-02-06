@@ -42,16 +42,18 @@ def test_github_client_status(mock_github):
 @patch("requests.post")
 @patch("requests.get")
 def test_jules_client_sessions(mock_get, mock_post):
-    client = JulesClient()
-    assert client.can_start_session() is True
-
-    # Mock get_source_name
-    mock_get.return_value.json.return_value = {"sources": [{"name": "sources/github/owner/repo", "id": "github/owner/repo"}]}
+    # Mock responses first to avoid infinite loops in can_start_session
+    mock_get.return_value.json.return_value = {
+        "sources": [{"name": "sources/github/owner/repo", "id": "github/owner/repo"}],
+        "sessions": [],
+        "nextPageToken": None
+    }
     mock_get.return_value.status_code = 200
-
-    # Mock create_session
     mock_post.return_value.json.return_value = {"id": "sess_1"}
     mock_post.return_value.status_code = 200
+
+    client = JulesClient()
+    assert client.can_start_session() is True
 
     session = client.create_session("test task", "title")
     assert session["id"] == "sess_1"
