@@ -132,3 +132,35 @@ class PRSync:
                     self.db.delete_synced_pr(gh_pr_id)
                 except Exception as e:
                     logger.error(f"Failed to close GitHub PR #{gh_pr_id}: {e}")
+
+    def check_prs_for_rebase_and_conflicts(self):
+        """Check all open PRs (including drafts) for merge conflicts and request fixes."""
+        logger.info("Checking for PRs with merge conflicts...")
+        prs = self.gh_client.get_pull_requests(state="open")
+
+        request_message = (
+            "Hello @jules! It looks like this PR has some merge conflicts or needs a rebase. "
+            "Could you please resolve them, ensure all tests pass, and force push the clean changes? "
+            "Thank you!"
+        )
+
+        for pr in prs:
+            # Skip if mergeable state is unknown (being computed)
+            if pr.mergeable is None:
+                continue
+
+            if pr.mergeable is False:
+                logger.info(f"PR #{pr.number} has merge conflicts. Checking if we already commented...")
+                comments = list(pr.get_issue_comments())
+                last_comment = comments[-1] if comments else None
+
+                # Check if the last comment is already our request
+                if last_comment and request_message in last_comment.body:
+                    logger.info(f"Already requested fixes for PR #{pr.number}. Skipping.")
+                    continue
+
+                logger.info(f"Posting comment on PR #{pr.number} requesting fixes from @jules.")
+                try:
+                    pr.create_issue_comment(request_message)
+                except Exception as e:
+                    logger.error(f"Failed to post comment on PR #{pr.number}: {e}")
