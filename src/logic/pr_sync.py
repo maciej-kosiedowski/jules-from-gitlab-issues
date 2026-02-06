@@ -99,7 +99,7 @@ class PRSync:
 
                         mr = self.gl_client.create_merge_request(
                             source_branch=source_branch,
-                            target_branch="main",
+                            target_branch=settings.STARTING_BRANCH_NAME,
                             title=f"Sync: {pr.title}",
                             description=description
                         )

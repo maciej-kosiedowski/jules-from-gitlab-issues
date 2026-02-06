@@ -37,7 +37,7 @@ class GitLabClient:
         except Exception:
             return None
 
-    def get_file_content(self, file_path: str, ref: str = "main"):
+    def get_file_content(self, file_path: str, ref: str = "master"):
         """Get content of a file from the repository."""
         try:
             f = self.project.files.get(file_path=file_path, ref=ref)
@@ -45,7 +45,7 @@ class GitLabClient:
         except Exception:
             return None
 
-    def file_exists(self, file_path: str, ref: str = "main") -> bool:
+    def file_exists(self, file_path: str, ref: str = "master") -> bool:
         """Check if a file exists in the repository."""
         try:
             self.project.files.get(file_path=file_path, ref=ref)
@@ -53,7 +53,7 @@ class GitLabClient:
         except Exception:
             return False
 
-    def create_branch(self, branch_name: str, ref: str = "main"):
+    def create_branch(self, branch_name: str, ref: str = "master"):
         """Create a new branch in GitLab."""
         try:
             self.project.branches.create({"branch": branch_name, "ref": ref})
