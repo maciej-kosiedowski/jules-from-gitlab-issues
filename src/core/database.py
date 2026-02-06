@@ -1,7 +1,7 @@
 import sqlite3
 import os
 from enum import Enum
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 from src.utils.logger import logger
 
 class SessionStatus(str, Enum):
@@ -26,6 +26,13 @@ class Database:
                     github_pr_id INTEGER,
                     gitlab_mr_id INTEGER,
                     status TEXT NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS synced_prs (
+                    github_pr_id INTEGER PRIMARY KEY,
+                    gitlab_mr_iid INTEGER NOT NULL,
+                    gitlab_issue_id INTEGER
                 )
             """)
             conn.commit()
@@ -77,3 +84,56 @@ class Database:
                 (str(task_id), task_type)
             )
             return cursor.fetchone()
+
+    # Methods for synced_prs
+
+    def add_synced_pr(self, github_pr_id: int, gitlab_mr_iid: int, gitlab_issue_id: Optional[int] = None):
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO synced_prs (github_pr_id, gitlab_mr_iid, gitlab_issue_id) VALUES (?, ?, ?)",
+                    (github_pr_id, gitlab_mr_iid, gitlab_issue_id)
+                )
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error adding synced PR to database: {e}")
+
+    def get_synced_pr(self, github_pr_id: int) -> Optional[Tuple]:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT gitlab_mr_iid, gitlab_issue_id FROM synced_prs WHERE github_pr_id = ?", (github_pr_id,))
+            return cursor.fetchone()
+
+    def get_all_synced_prs(self) -> Dict[int, int]:
+        """Returns a dict mapping GitHub PR IDs to GitLab MR IIDs."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT github_pr_id, gitlab_mr_iid FROM synced_prs")
+            return {row[0]: row[1] for row in cursor.fetchall()}
+
+    def delete_synced_pr(self, github_pr_id: int):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM synced_prs WHERE github_pr_id = ?", (github_pr_id,))
+            conn.commit()
+
+    def get_gl_issue_id_by_gh_pr(self, github_pr_id: int) -> Optional[int]:
+        """Try to find the GitLab issue ID associated with a GitHub PR ID."""
+        # First check synced_prs table
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT gitlab_issue_id FROM synced_prs WHERE github_pr_id = ?", (github_pr_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                return row[0]
+
+            # Then check sessions table
+            cursor.execute("SELECT task_id FROM sessions WHERE github_pr_id = ? AND task_type = 'gitlab_issue'", (github_pr_id,))
+            row = cursor.fetchone()
+            if row:
+                try:
+                    return int(row[0])
+                except ValueError:
+                    return None
+        return None

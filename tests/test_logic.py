@@ -30,6 +30,9 @@ def test_task_monitor_delegation():
 def test_pr_sync_create_vs_update(tmp_path):
     gl_client = MagicMock()
     gh_client = MagicMock()
+    db = MagicMock()
+    db.get_all_synced_prs.return_value = {}
+    db.get_gl_issue_id_by_gh_pr.return_value = None
     state_file = tmp_path / "synced_prs.json"
 
     pr = MagicMock()
@@ -55,9 +58,9 @@ def test_pr_sync_create_vs_update(tmp_path):
     mr.iid = 101
     gl_client.create_merge_request.return_value = mr
 
-    sync = PRSync(gl_client, gh_client, state_file=str(state_file))
+    sync = PRSync(gl_client, gh_client, db, state_file=str(state_file))
     sync.sync_github_to_gitlab()
 
     args, kwargs = gl_client.commit_changes.call_args
     assert args[2][0]["action"] == "update"
-    assert sync.synced_prs["303"] == 101
+    db.add_synced_pr.assert_called_with(303, 101, None)

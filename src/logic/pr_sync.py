@@ -4,51 +4,57 @@ import re
 from src.config import settings
 from src.core.gitlab_client import GitLabClient
 from src.core.github_client import GitHubClient
+from src.core.database import Database
 from src.utils.logger import logger
 
 class PRSync:
-    def __init__(self, gl_client: GitLabClient, gh_client: GitHubClient, state_file: str = "data/synced_prs.json"):
+    def __init__(self, gl_client: GitLabClient, gh_client: GitHubClient, db: Database, state_file: str = "data/synced_prs.json"):
         self.gl_client = gl_client
         self.gh_client = gh_client
+        self.db = db
         self.state_file = state_file
-        self.synced_prs: dict[str, int] = self._load_state()
+        self._migrate_from_json()
 
-    def _load_state(self) -> dict[str, int]:
+    def _migrate_from_json(self):
         if os.path.exists(self.state_file):
             try:
+                logger.info(f"Migrating state from {self.state_file} to database...")
                 with open(self.state_file, "r") as f:
                     data = json.load(f)
                     if isinstance(data, list):
-                        # Convert old list format to dict (we don't know the GL MR IID, so we'll use 0)
-                        return {str(pr_num): 0 for pr_num in data}
-                    return data
-            except Exception as e:
-                logger.error(f"Error loading state from {self.state_file}: {e}")
-        return {}
+                        for pr_num in data:
+                            self.db.add_synced_pr(int(pr_num), 0)
+                    elif isinstance(data, dict):
+                        for gh_pr_id, gl_mr_iid in data.items():
+                            self.db.add_synced_pr(int(gh_pr_id), int(gl_mr_iid))
 
-    def _save_state(self):
-        try:
-            os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
-            with open(self.state_file, "w") as f:
-                json.dump(self.synced_prs, f)
-        except Exception as e:
-            logger.error(f"Error saving state to {self.state_file}: {e}")
+                # Rename file instead of deleting to be safe
+                os.rename(self.state_file, f"{self.state_file}.bak")
+                logger.info(f"Migration complete. Original file renamed to {self.state_file}.bak")
+            except Exception as e:
+                logger.error(f"Error during migration from {self.state_file}: {e}")
 
     def sync_github_to_gitlab(self):
         """Module C: GitHub -> GitLab Sync"""
         logger.info("Checking for GitHub PRs to sync to GitLab...")
         prs = self.gh_client.get_pull_requests(state="open")
+        synced_prs = self.db.get_all_synced_prs()
 
         for pr in prs:
             if pr.draft:
                 continue
 
-            if str(pr.number) in self.synced_prs:
+            if pr.number in synced_prs:
                 continue
 
             # Detect GitLab Issue ID
-            issue_match = re.search(r"GL Issue #(\d+)", pr.title)
-            gl_issue_id = int(issue_match.group(1)) if issue_match else None
+            # Priority 1: Check database (sessions or synced_prs)
+            gl_issue_id = self.db.get_gl_issue_id_by_gh_pr(pr.number)
+
+            # Priority 2: Regex on title
+            if not gl_issue_id:
+                issue_match = re.search(r"GL Issue #(\d+)", pr.title)
+                gl_issue_id = int(issue_match.group(1)) if issue_match else None
 
             if gl_issue_id and self.gl_client.has_open_mr(gl_issue_id):
                 logger.info(f"GitLab issue #{gl_issue_id} already has an open MR. Skipping sync for GH PR #{pr.number}")
@@ -95,6 +101,7 @@ class PRSync:
                     try:
                         description = f"Synchronized from GitHub PR #{pr.number}\n\nOriginal link: {pr.html_url}"
                         if gl_issue_id:
+                            # Use gl_issue_id which we ensured is the GitLab task number
                             description = f"Closes #{gl_issue_id}\n\n" + description
 
                         mr = self.gl_client.create_merge_request(
@@ -103,8 +110,7 @@ class PRSync:
                             title=f"Sync: {pr.title}",
                             description=description
                         )
-                        self.synced_prs[str(pr.number)] = mr.iid
-                        self._save_state()
+                        self.db.add_synced_pr(pr.number, mr.iid, gl_issue_id)
                         logger.info(f"Successfully created GitLab MR !{mr.iid} for GitHub PR #{pr.number}")
                     except Exception as e:
                         logger.error(f"Failed to create GitLab MR for PR #{pr.number}: {e}")
@@ -112,17 +118,17 @@ class PRSync:
     def sync_gitlab_closures_to_github(self):
         """Track GitLab MR status and close corresponding GitHub PR if GitLab MR is closed/merged."""
         logger.info("Checking for GitLab MR closures to sync back to GitHub...")
-        for gh_pr_num_str, gl_mr_iid in list(self.synced_prs.items()):
+        synced_prs = self.db.get_all_synced_prs()
+        for gh_pr_id, gl_mr_iid in synced_prs.items():
             if gl_mr_iid == 0:
                 continue # Skip old format entries we can't track
 
             mr = self.gl_client.get_merge_request(gl_mr_iid)
             if mr and mr.state in ["closed", "merged"]:
-                logger.info(f"GitLab MR !{gl_mr_iid} is {mr.state}. Closing GitHub PR #{gh_pr_num_str}")
+                logger.info(f"GitLab MR !{gl_mr_iid} is {mr.state}. Closing GitHub PR #{gh_pr_id}")
                 try:
-                    self.gh_client.close_pr(int(gh_pr_num_str))
+                    self.gh_client.close_pr(gh_pr_id)
                     # Remove from synced_prs so we don't keep checking it
-                    del self.synced_prs[gh_pr_num_str]
-                    self._save_state()
+                    self.db.delete_synced_pr(gh_pr_id)
                 except Exception as e:
-                    logger.error(f"Failed to close GitHub PR #{gh_pr_num_str}: {e}")
+                    logger.error(f"Failed to close GitHub PR #{gh_pr_id}: {e}")
