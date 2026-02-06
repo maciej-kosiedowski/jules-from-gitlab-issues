@@ -20,6 +20,16 @@ class GitLabClient:
             "description": description
         })
 
+    def has_open_mr(self, issue_iid: int) -> bool:
+        """Check if an issue has any open Merge Requests."""
+        try:
+            issue = self.project.issues.get(issue_iid)
+            mrs = issue.related_merge_requests()
+            return any(mr["state"] == "opened" for mr in mrs)
+        except Exception as e:
+            logger.error(f"Error checking open MRs for issue {issue_iid}: {e}")
+            return False
+
     def get_merge_request(self, iid: int):
         """Get a specific Merge Request."""
         try:
