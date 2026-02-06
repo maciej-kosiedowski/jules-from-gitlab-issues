@@ -39,7 +39,7 @@ class JulesClient:
             logger.error(f"Error fetching sources: {e}")
         return f"sources/github/{settings.GITHUB_REPO}"
 
-    def create_session(self, prompt: str, title: str, branch: str = "main") -> Optional[Dict]:
+    def create_session(self, prompt: str, title: str, branch: str = "main", attachments: Optional[List[Dict]] = None) -> Optional[Dict]:
         source_name = self.get_source_name()
         if not source_name:
             logger.error("Could not determine Jules source name.")
@@ -56,6 +56,8 @@ class JulesClient:
             "automationMode": "AUTO_CREATE_PR",
             "title": title
         }
+        if attachments:
+            data["attachments"] = attachments
         try:
             return self._post("sessions", data)
         except Exception as e:

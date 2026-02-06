@@ -1,4 +1,5 @@
 import gitlab
+from typing import Optional
 from src.config import settings
 from src.utils.logger import logger
 
@@ -63,6 +64,30 @@ class GitLabClient:
             logger.error(f"Error creating branch {branch_name}: {e}")
             return False
 
+
+    def get_issue_notes(self, issue_iid: int):
+        """Fetch comments/notes for a given issue."""
+        try:
+            issue = self.project.issues.get(issue_iid)
+            return issue.notes.list(sort='asc', order_by='created_at')
+        except Exception as e:
+            logger.error(f"Error fetching notes for issue {issue_iid}: {e}")
+            return []
+
+    def download_file(self, url: str) -> Optional[bytes]:
+        """Download a file from a URL using authenticated session."""
+        try:
+            target_url = url
+            if url.startswith("/"):
+                target_url = f"{settings.GITLAB_URL.rstrip('/')}/{url.lstrip('/')}"
+
+            # Use the requests session from python-gitlab
+            response = self.gl.session.get(target_url)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            logger.error(f"Error downloading file from {url}: {e}")
+            return None
     def commit_changes(self, branch_name: str, commit_message: str, actions: list):
         """
         Create a commit with multiple file actions.
