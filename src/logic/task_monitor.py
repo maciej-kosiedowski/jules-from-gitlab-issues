@@ -1,3 +1,4 @@
+import re
 from src.core.gitlab_client import GitLabClient
 from src.core.github_client import GitHubClient
 from src.core.jules_client import JulesClient
@@ -82,6 +83,20 @@ class TaskMonitor:
             if pr_output:
                 logger.info(f"Session {session_id} finished (PR created).")
                 self.db.update_session_status(session_id, SessionStatus.COMPLETED)
+
+                # Extract PR number from pr_output if possible
+                extracted_pr_id = None
+                if isinstance(pr_output, dict):
+                    extracted_pr_id = pr_output.get("number")
+                    if not extracted_pr_id and "url" in pr_output:
+                        match = re.search(r"/pull/(\d+)", pr_output["url"])
+                        if match:
+                            extracted_pr_id = int(match.group(1))
+
+                if extracted_pr_id:
+                    logger.info(f"Detected GitHub PR #{extracted_pr_id} for session {session_id}")
+                    self.db.update_session_ids(session_id, github_pr_id=extracted_pr_id)
+
                 if task_type == "github_pr":
                     self.gh_client.add_pr_comment(int(task_id), "Jules AI has finished working on this PR. Please review the changes.")
                 continue

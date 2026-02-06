@@ -18,7 +18,7 @@ def main():
         jules_client = JulesClient()
 
         task_monitor = TaskMonitor(gl_client, gh_client, jules_client, db)
-        pr_sync = PRSync(gl_client, gh_client)
+        pr_sync = PRSync(gl_client, gh_client, db)
 
         while True:
             logger.info("Starting cycle...")
