@@ -1,16 +1,16 @@
-from concurrent.futures import ThreadPoolExecutor
 from src.core.gitlab_client import GitLabClient
 from src.core.github_client import GitHubClient
 from src.core.jules_client import JulesClient
+from src.core.database import Database
 from src.utils.logger import logger
 from src.config import settings
 
 class TaskMonitor:
-    def __init__(self, gl_client: GitLabClient, gh_client: GitHubClient, jules_client: JulesClient):
+    def __init__(self, gl_client: GitLabClient, gh_client: GitHubClient, jules_client: JulesClient, db: Database):
         self.gl_client = gl_client
         self.gh_client = gh_client
         self.jules_client = jules_client
-        self.executor = ThreadPoolExecutor(max_workers=settings.JULES_MAX_CONCURRENT_SESSIONS)
+        self.db = db
 
     def check_and_delegate_gitlab_tasks(self):
         """Module A: GitLab -> Jules"""
@@ -18,7 +18,13 @@ class TaskMonitor:
         issues = self.gl_client.get_open_ai_issues()
 
         for issue in issues:
-            if self.jules_client.can_start_session():
+            # Check if already delegating
+            existing = self.db.get_session_by_task(issue.iid, "gitlab_issue")
+            if existing:
+                continue
+
+            active_count = len(self.db.get_active_sessions())
+            if active_count < settings.JULES_MAX_CONCURRENT_SESSIONS:
                 logger.info(f"Delegating GitLab issue #{issue.iid} to Jules")
 
                 guidelines = self.gl_client.get_file_content("CONTRIBUTING.md") or                              self.gl_client.get_file_content("GUIDELINES.md") or ""
@@ -27,17 +33,18 @@ class TaskMonitor:
                     f"Task: {issue.title}\n\n"
                     f"Description: {issue.description}\n\n"
                     f"Guidelines:\n{guidelines}\n\n"
-                    "Instruction: Wykonaj zadanie zgodnie z załączonymi guidelines. "
-                    "Przed zakończeniem uruchom lintery. "
-                    "Przeprowadź krytyczne self-review swoich zmian pod kątem bezpieczeństwa i wydajności przed zatwierdzeniem."
+                    "Instruction: Complete the task according to the attached guidelines. "
+                    "Run linters before finishing. "
+                    "Perform a critical self-review of your changes for security and performance before submitting."
                 )
 
-                session_id = self.jules_client.start_session(issue.title, prompt)
-                if session_id:
-                    # Run in background
-                    self.executor.submit(self.jules_client.wait_for_completion, session_id)
+                session = self.jules_client.create_session(prompt, f"GitLab Issue #{issue.iid}: {issue.title}")
+                if session:
+                    session_id = session.get("id")
+                    self.db.add_session(session_id, issue.iid, "gitlab_issue")
+                    logger.info(f"Started Jules session {session_id} for GitLab issue #{issue.iid}")
             else:
-                logger.warning("No available Jules sessions to delegate GitLab task.")
+                logger.warning("Max concurrent Jules sessions reached.")
                 break
 
     def check_and_fix_github_prs(self):
@@ -46,22 +53,56 @@ class TaskMonitor:
         prs = self.gh_client.get_pull_requests(state="open")
 
         for pr in prs:
+            # Check if already delegating
+            existing = self.db.get_session_by_task(pr.number, "github_pr")
+            if existing:
+                continue
+
             status = self.gh_client.get_pr_status(pr.head.sha)
             if status == "failure":
-                if self.jules_client.can_start_session():
+                active_count = len(self.db.get_active_sessions())
+                if active_count < settings.JULES_MAX_CONCURRENT_SESSIONS:
                     logger.info(f"PR #{pr.number} is RED. Delegating fix to Jules.")
 
                     prompt = (
                         f"Fix PR #{pr.number}: {pr.title}\n\n"
                         f"Current status: RED\n\n"
-                        "Instruction: Analiza logów błędów i wprowadzenie poprawek do PR, aby status zmienił się na GREEN. "
-                        "Uruchom lintery. "
-                        "Przeprowadź krytyczne self-review swoich zmian pod kątem bezpieczeństwa i wydajności przed zatwierdzeniem."
+                        "Instruction: Analyze error logs and implement fixes to make the PR status GREEN. "
+                        "Run linters. "
+                        "Perform a critical self-review of your changes for security and performance before submitting."
                     )
 
-                    session_id = self.jules_client.start_session(f"Fix PR #{pr.number}", prompt)
-                    if session_id:
-                        self.executor.submit(self.jules_client.wait_for_completion, session_id)
+                    session = self.jules_client.create_session(prompt, f"Fix GH PR #{pr.number}: {pr.title}", branch=pr.head.ref)
+                    if session:
+                        session_id = session.get("id")
+                        self.db.add_session(session_id, pr.number, "github_pr")
+                        self.gh_client.add_pr_comment(pr.number, f"Jules AI has started working on fixing this PR. Session ID: {session_id}")
+                        logger.info(f"Started Jules session {session_id} for GitHub PR #{pr.number}")
                 else:
-                    logger.warning("No available Jules sessions to fix PR.")
+                    logger.warning("Max concurrent Jules sessions reached.")
                     break
+
+    def monitor_active_sessions(self):
+        """Monitor status of active Jules sessions and update database."""
+        active_sessions = self.db.get_active_sessions()
+        for session_id, task_id, task_type in active_sessions:
+            logger.info(f"Monitoring Jules session {session_id} for {task_type} {task_id}")
+            session = self.jules_client.get_session(session_id)
+            if not session:
+                continue
+
+            # Check if session is finished.
+            # Based on the API docs, we might need to check activities or outputs.
+            # If outputs contains a pullRequest, it's likely finished or progressing.
+            outputs = session.get("outputs", [])
+            has_pr = any("pullRequest" in o for o in outputs)
+
+            # For simplicity, if it has a PR or some final state, we mark it completed.
+            # In a real scenario, we'd check if the activities show 'COMPLETED'.
+            if has_pr:
+                logger.info(f"Session {session_id} finished (PR created).")
+                self.db.update_session_status(session_id, "completed")
+                if task_type == "github_pr":
+                    self.gh_client.add_pr_comment(int(task_id), "Jules AI has finished working on this PR. Please review the changes.")
+
+            # We could also check for errors in activities

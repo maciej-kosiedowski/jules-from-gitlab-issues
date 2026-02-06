@@ -39,13 +39,19 @@ def test_github_client_status(mock_github):
     mock_commit.get_check_runs.return_value = [mock_run]
     assert client.get_pr_status("sha123") == "failure"
 
-def test_jules_client_sessions():
+@patch("requests.post")
+@patch("requests.get")
+def test_jules_client_sessions(mock_get, mock_post):
     client = JulesClient()
     assert client.can_start_session() is True
 
-    session_id = client.start_session("test task", "context")
-    assert session_id is not None
+    # Mock get_source_name
+    mock_get.return_value.json.return_value = {"sources": [{"name": "sources/github/owner/repo", "id": "github/owner/repo"}]}
+    mock_get.return_value.status_code = 200
 
-    with patch("time.sleep"):
-        client.wait_for_completion(session_id)
-    assert client.active_sessions == 0
+    # Mock create_session
+    mock_post.return_value.json.return_value = {"id": "sess_1"}
+    mock_post.return_value.status_code = 200
+
+    session = client.create_session("test task", "title")
+    assert session["id"] == "sess_1"
