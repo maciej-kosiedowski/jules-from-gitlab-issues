@@ -16,8 +16,8 @@ class JulesClient:
         self.active_sessions_count = 0
         self._lock = threading.Lock()
 
-    def _get(self, endpoint: str):
-        response = requests.get(f"{self.BASE_URL}/{endpoint}", headers=self.headers)
+    def _get(self, endpoint: str, params: Optional[Dict] = None):
+        response = requests.get(f"{self.BASE_URL}/{endpoint}", headers=self.headers, params=params)
         response.raise_for_status()
         return response.json()
 
@@ -63,12 +63,48 @@ class JulesClient:
 
     def get_session(self, session_id: str) -> Optional[Dict]:
         try:
-            # Use name if it's already full path, else construct it
             name = session_id if session_id.startswith("sessions/") else f"sessions/{session_id}"
             return self._get(name)
         except Exception as e:
             logger.error(f"Error getting Jules session {session_id}: {e}")
             return None
+
+    def list_sessions(self, page_size: int = 100, page_token: Optional[str] = None) -> Dict:
+        """List sessions with pagination."""
+        params = {"pageSize": page_size}
+        if page_token:
+            params["pageToken"] = page_token
+        try:
+            return self._get("sessions", params=params)
+        except Exception as e:
+            logger.error(f"Error listing Jules sessions: {e}")
+            return {}
+
+    def get_active_sessions_count_from_api(self) -> int:
+        """
+        Count active sessions on Jules by iterating through all sessions.
+        Note: The API doesn't seem to have a filter for 'active',
+        so we might need to check if they have outputs/PRs or use our local DB.
+        But the user specifically asked to track active sessions via list_sessions.
+        """
+        count = 0
+        page_token = None
+        while True:
+            data = self.list_sessions(page_size=100, page_token=page_token)
+            sessions = data.get("sessions", [])
+            for s in sessions:
+                # We assume a session is 'active' if it doesn't have a PR output yet
+                # or based on some other criteria. If we don't have a clear 'state' field,
+                # we'll just count them all or filter by those without PRs.
+                outputs = s.get("outputs", [])
+                has_pr = any("pullRequest" in o for o in outputs)
+                if not has_pr:
+                    count += 1
+
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+        return count
 
     def list_activities(self, session_id: str) -> List[Dict]:
         try:
@@ -87,8 +123,9 @@ class JulesClient:
             return None
 
     def can_start_session(self) -> bool:
-        # Note: This is now just a local check.
-        # In a real scenario, we might want to check the database for active sessions.
-        # But for now, we'll keep the simple counter or rely on the TaskMonitor.
-        return True
-
+        # We'll use the API count if possible
+        try:
+            active_count = self.get_active_sessions_count_from_api()
+            return active_count < settings.JULES_MAX_CONCURRENT_SESSIONS
+        except Exception:
+            return True

@@ -26,9 +26,8 @@ def main():
             # Monitor existing sessions
             task_monitor.monitor_active_sessions()
 
-            # Module A & B
-            task_monitor.check_and_delegate_gitlab_tasks()
-            task_monitor.check_and_fix_github_prs()
+            # Delegate new tasks (Module A & B)
+            task_monitor.check_and_delegate_tasks()
 
             # Module C
             pr_sync.sync_github_to_gitlab()
@@ -39,7 +38,6 @@ def main():
 
     except Exception as e:
         logger.error(f"Critical error in main loop: {e}", exc_info=True)
-        # In Docker, this crash will trigger a restart if configured
         raise
 
 if __name__ == "__main__":
