@@ -34,6 +34,10 @@ class GitHubClient:
         # If no failures and everything is completed/success
         return "success"
 
+    def get_file_content(self, path: str, ref: str) -> str:
+        """Get the content of a file at a specific ref."""
+        return self.repo.get_contents(path, ref=ref).decoded_content.decode("utf-8")
+
     def get_pr_diff(self, pr_number: int):
         """Get the files changed in a Pull Request."""
         pr = self.repo.get_pull(pr_number)

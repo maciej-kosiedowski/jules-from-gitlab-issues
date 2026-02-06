@@ -24,6 +24,9 @@ class TaskMonitor:
                 break
 
             if not self.db.get_session_by_task(issue.iid, "gitlab_issue"):
+                if self.gl_client.has_open_mr(issue.iid):
+                    logger.info(f"GitLab issue #{issue.iid} already has an open MR. Skipping delegation.")
+                    continue
                 logger.info(f"Delegating GitLab issue #{issue.iid} to Jules")
                 guidelines = self.gl_client.get_file_content("CONTRIBUTING.md") or \
                              self.gl_client.get_file_content("GUIDELINES.md") or ""

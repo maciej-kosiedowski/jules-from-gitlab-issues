@@ -13,6 +13,7 @@ def test_task_monitor_delegation():
     issue.title = "Test Issue"
     issue.description = "Test Description"
     gl_client.get_open_ai_issues.return_value = [issue]
+    gl_client.has_open_mr.return_value = False
 
     db.get_session_by_task.return_value = None
     db.get_active_sessions.return_value = []
@@ -26,8 +27,7 @@ def test_task_monitor_delegation():
     jules_client.create_session.assert_called()
     db.add_session.assert_called_with("sess_1", "1", "gitlab_issue")
 
-@patch("requests.get")
-def test_pr_sync_create_vs_update(mock_get, tmp_path):
+def test_pr_sync_create_vs_update(tmp_path):
     gl_client = MagicMock()
     gh_client = MagicMock()
     state_file = tmp_path / "synced_prs.json"
@@ -35,15 +35,17 @@ def test_pr_sync_create_vs_update(mock_get, tmp_path):
     pr = MagicMock()
     pr.number = 303
     pr.draft = False
+    pr.title = "Test PR"
     gh_client.get_pull_requests.return_value = [pr]
 
     file_mock = MagicMock()
     file_mock.filename = "update.me"
+    file_mock.status = "modified"
     gh_client.get_pr_diff.return_value = [file_mock]
 
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.text = "new content"
+    gh_client.get_file_content.return_value = "new content"
 
+    gl_client.has_open_mr.return_value = False
     gl_client.file_exists.return_value = True
     gl_client.create_branch.return_value = True
     gl_client.commit_changes.return_value = True

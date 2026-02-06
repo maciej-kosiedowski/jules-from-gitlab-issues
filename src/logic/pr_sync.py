@@ -1,6 +1,6 @@
 import json
 import os
-import requests
+import re
 from src.config import settings
 from src.core.gitlab_client import GitLabClient
 from src.core.github_client import GitHubClient
@@ -40,42 +40,74 @@ class PRSync:
         prs = self.gh_client.get_pull_requests(state="open")
 
         for pr in prs:
-            if not pr.draft and str(pr.number) not in self.synced_prs:
-                logger.info(f"Syncing GitHub PR #{pr.number} to GitLab MR")
+            if pr.draft:
+                continue
 
-                files = self.gh_client.get_pr_diff(pr.number)
-                actions = []
-                headers = {"Authorization": f"token {settings.GITHUB_TOKEN}"}
+            if str(pr.number) in self.synced_prs:
+                continue
 
-                for f in files:
-                    content_resp = requests.get(f.raw_url, headers=headers)
-                    if content_resp.status_code == 200:
+            # Detect GitLab Issue ID
+            issue_match = re.search(r"GL Issue #(\d+)", pr.title)
+            gl_issue_id = int(issue_match.group(1)) if issue_match else None
+
+            if gl_issue_id and self.gl_client.has_open_mr(gl_issue_id):
+                logger.info(f"GitLab issue #{gl_issue_id} already has an open MR. Skipping sync for GH PR #{pr.number}")
+                continue
+
+            logger.info(f"Syncing GitHub PR #{pr.number} to GitLab MR")
+
+            files = self.gh_client.get_pr_diff(pr.number)
+            actions = []
+
+            for f in files:
+                try:
+                    if f.status == "removed":
+                        actions.append({
+                            "action": "delete",
+                            "file_path": f.filename
+                        })
+                    elif f.status == "renamed":
+                        content = self.gh_client.get_file_content(f.filename, pr.head.sha)
+                        actions.append({
+                            "action": "move",
+                            "file_path": f.filename,
+                            "previous_path": f.previous_filename,
+                            "content": content
+                        })
+                    else: # added or modified
+                        content = self.gh_client.get_file_content(f.filename, pr.head.sha)
                         action = "update" if self.gl_client.file_exists(f.filename) else "create"
                         actions.append({
                             "action": action,
                             "file_path": f.filename,
-                            "content": content_resp.text
+                            "content": content
                         })
+                except Exception as e:
+                    logger.error(f"Error retrieving content for file {f.filename} in PR #{pr.number}: {e}")
 
-                if not actions:
-                    logger.warning(f"No files could be retrieved for PR #{pr.number}")
-                    continue
+            if not actions:
+                logger.warning(f"No actions could be generated for PR #{pr.number}")
+                continue
 
-                source_branch = f"sync-gh-{pr.number}"
-                if self.gl_client.create_branch(source_branch):
-                    if self.gl_client.commit_changes(source_branch, f"Sync from GH PR #{pr.number}", actions):
-                        try:
-                            mr = self.gl_client.create_merge_request(
-                                source_branch=source_branch,
-                                target_branch="main",
-                                title=f"Sync: {pr.title}",
-                                description=f"Synchronized from GitHub PR #{pr.number}\n\nOriginal link: {pr.html_url}"
-                            )
-                            self.synced_prs[str(pr.number)] = mr.iid
-                            self._save_state()
-                            logger.info(f"Successfully created GitLab MR !{mr.iid} for GitHub PR #{pr.number}")
-                        except Exception as e:
-                            logger.error(f"Failed to create GitLab MR for PR #{pr.number}: {e}")
+            source_branch = f"sync-gh-{pr.number}"
+            if self.gl_client.create_branch(source_branch):
+                if self.gl_client.commit_changes(source_branch, f"Sync from GH PR #{pr.number}", actions):
+                    try:
+                        description = f"Synchronized from GitHub PR #{pr.number}\n\nOriginal link: {pr.html_url}"
+                        if gl_issue_id:
+                            description = f"Closes #{gl_issue_id}\n\n" + description
+
+                        mr = self.gl_client.create_merge_request(
+                            source_branch=source_branch,
+                            target_branch="main",
+                            title=f"Sync: {pr.title}",
+                            description=description
+                        )
+                        self.synced_prs[str(pr.number)] = mr.iid
+                        self._save_state()
+                        logger.info(f"Successfully created GitLab MR !{mr.iid} for GitHub PR #{pr.number}")
+                    except Exception as e:
+                        logger.error(f"Failed to create GitLab MR for PR #{pr.number}: {e}")
 
     def sync_gitlab_closures_to_github(self):
         """Track GitLab MR status and close corresponding GitHub PR if GitLab MR is closed/merged."""
