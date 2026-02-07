@@ -33,6 +33,8 @@ def test_pr_sync_create_vs_update(tmp_path):
     db = MagicMock()
     db.get_all_synced_prs.return_value = {}
     db.get_gl_issue_id_by_gh_pr.return_value = None
+    db.get_all_session_issue_ids.return_value = {}
+
     state_file = tmp_path / "synced_prs.json"
 
     pr = MagicMock()
