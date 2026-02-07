@@ -74,59 +74,71 @@ class TaskMonitor:
         active_count = self.jules_client.get_active_sessions_count_from_api()
 
         logger.info("Checking for new GitLab tasks with 'AI' label...")
-        issues = self.gl_client.get_open_ai_issues()
-        for issue in issues:
-            if active_count >= settings.JULES_MAX_CONCURRENT_SESSIONS:
-                logger.warning(f"Max concurrent Jules sessions reached ({active_count}).")
-                break
+        if active_count >= settings.JULES_MAX_CONCURRENT_SESSIONS:
+            logger.warning(f"Max concurrent Jules sessions reached ({active_count}).")
+        else:
+            issues = list(self.gl_client.get_open_ai_issues())
+            issue_ids = [str(issue.iid) for issue in issues]
+            existing_issues = self.db.get_existing_tasks(issue_ids, "gitlab_issue")
 
-            if not self.db.get_session_by_task(issue.iid, "gitlab_issue"):
-                if self.gl_client.has_open_mr(issue.iid):
-                    logger.info(f"GitLab issue #{issue.iid} already has an open MR. Skipping delegation.")
-                    continue
-                logger.info(f"Delegating GitLab issue #{issue.iid} to Jules")
-                guidelines = self.gl_client.get_file_content("CONTRIBUTING.md") or \
-                             self.gl_client.get_file_content("GUIDELINES.md") or ""
+            for issue in issues:
+                if active_count >= settings.JULES_MAX_CONCURRENT_SESSIONS:
+                    logger.warning(f"Max concurrent Jules sessions reached ({active_count}).")
+                    break
 
-                history_text, attachments = self._prepare_attachments_and_history(issue)
+                if str(issue.iid) not in existing_issues:
+                    if self.gl_client.has_open_mr(issue.iid):
+                        logger.info(f"GitLab issue #{issue.iid} already has an open MR. Skipping delegation.")
+                        continue
+                    logger.info(f"Delegating GitLab issue #{issue.iid} to Jules")
+                    guidelines = self.gl_client.get_file_content("CONTRIBUTING.md") or \
+                                 self.gl_client.get_file_content("GUIDELINES.md") or ""
 
-                prompt = (
-                    f"Task: {issue.title}\n\nDescription: {issue.description}\n\n"
-                    f"Conversation History:\n{history_text}\n\n"
-                    f"Guidelines:\n{guidelines}\n\n"
-                    "Instruction: Complete the task according to the attached guidelines. Run linters. Self-review."
-                )
-                session = self.jules_client.create_session(
-                    prompt,
-                    f"GL Issue #{issue.iid}: {issue.title}",
-                    settings.STARTING_BRANCH_NAME,
-                    attachments=attachments
-                )
-                if session:
-                    session_id = session.get("id")
-                    self.db.add_session(session_id, str(issue.iid), "gitlab_issue")
-                    active_count += 1
+                    history_text, attachments = self._prepare_attachments_and_history(issue)
 
-        logger.info("Checking for RED GitHub Pull Requests...")
-        prs = self.gh_client.get_pull_requests(state="open")
-        for pr in prs:
-            if active_count >= settings.JULES_MAX_CONCURRENT_SESSIONS:
-                logger.warning(f"Max concurrent Jules sessions reached ({active_count}).")
-                break
-
-            if not self.db.get_session_by_task(pr.number, "github_pr"):
-                status = self.gh_client.get_pr_status(pr.head.sha)
-                if status == "failure":
-                    logger.info(f"PR #{pr.number} is RED. Delegating fix to Jules.")
                     prompt = (
-                        f"Fix PR #{pr.number}: {pr.title}\n\nInstruction: Fix logs to make GREEN. Run linters. Self-review."
+                        f"Task: {issue.title}\n\nDescription: {issue.description}\n\n"
+                        f"Conversation History:\n{history_text}\n\n"
+                        f"Guidelines:\n{guidelines}\n\n"
+                        "Instruction: Complete the task according to the attached guidelines. Run linters. Self-review."
                     )
-                    session = self.jules_client.create_session(prompt, f"Fix GH PR #{pr.number}: {pr.title}", branch=pr.head.ref)
+                    session = self.jules_client.create_session(
+                        prompt,
+                        f"GL Issue #{issue.iid}: {issue.title}",
+                        settings.STARTING_BRANCH_NAME,
+                        attachments=attachments
+                    )
                     if session:
                         session_id = session.get("id")
-                        self.db.add_session(session_id, str(pr.number), "github_pr", github_pr_id=pr.number)
-                        self.gh_client.add_pr_comment(pr.number, f"Jules AI has started working on fixing this PR. Session ID: {session_id}")
+                        self.db.add_session(session_id, str(issue.iid), "gitlab_issue")
                         active_count += 1
+
+        logger.info("Checking for RED GitHub Pull Requests...")
+        if active_count >= settings.JULES_MAX_CONCURRENT_SESSIONS:
+            logger.warning(f"Max concurrent Jules sessions reached ({active_count}).")
+        else:
+            prs = list(self.gh_client.get_pull_requests(state="open"))
+            pr_ids = [str(pr.number) for pr in prs]
+            existing_prs = self.db.get_existing_tasks(pr_ids, "github_pr")
+
+            for pr in prs:
+                if active_count >= settings.JULES_MAX_CONCURRENT_SESSIONS:
+                    logger.warning(f"Max concurrent Jules sessions reached ({active_count}).")
+                    break
+
+                if str(pr.number) not in existing_prs:
+                    status = self.gh_client.get_pr_status(pr.head.sha)
+                    if status == "failure":
+                        logger.info(f"PR #{pr.number} is RED. Delegating fix to Jules.")
+                        prompt = (
+                            f"Fix PR #{pr.number}: {pr.title}\n\nInstruction: Fix logs to make GREEN. Run linters. Self-review."
+                        )
+                        session = self.jules_client.create_session(prompt, f"Fix GH PR #{pr.number}: {pr.title}", branch=pr.head.ref)
+                        if session:
+                            session_id = session.get("id")
+                            self.db.add_session(session_id, str(pr.number), "github_pr", github_pr_id=pr.number)
+                            self.gh_client.add_pr_comment(pr.number, f"Jules AI has started working on fixing this PR. Session ID: {session_id}")
+                            active_count += 1
 
     def monitor_active_sessions(self):
         """Monitor status of active Jules sessions and update database."""

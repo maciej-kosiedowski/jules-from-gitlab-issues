@@ -1,7 +1,7 @@
 import sqlite3
 import os
 from enum import Enum
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Set
 from src.utils.logger import logger
 
 class SessionStatus(str, Enum):
@@ -69,6 +69,24 @@ class Database:
             if gitlab_mr_id is not None:
                 cursor.execute("UPDATE sessions SET gitlab_mr_id = ? WHERE session_id = ?", (gitlab_mr_id, session_id))
             conn.commit()
+
+    def get_existing_tasks(self, task_ids: List[str], task_type: str) -> Set[str]:
+        if not task_ids:
+            return set()
+
+        chunk_size = 900
+        existing_tasks = set()
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            for i in range(0, len(task_ids), chunk_size):
+                chunk = task_ids[i:i + chunk_size]
+                placeholders = ','.join(['?'] * len(chunk))
+                query = f'SELECT task_id FROM sessions WHERE task_type = ? AND task_id IN ({placeholders})'
+                cursor.execute(query, [task_type] + chunk)
+                existing_tasks.update(row[0] for row in cursor.fetchall())
+
+        return existing_tasks
 
     def get_active_sessions(self) -> List[Tuple]:
         with sqlite3.connect(self.db_path) as conn:
