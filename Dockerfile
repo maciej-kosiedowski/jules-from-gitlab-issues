@@ -13,8 +13,7 @@ RUN pip install --no-cache-dir uv && uv export --format requirements-txt > requi
 COPY src/ ./src/
 
 # Create necessary directories and set permissions
-RUN mkdir -p /app/logs /app/data && \
-    chown -R appuser:appuser /app
+RUN mkdir -p /app/logs /app/data &&     chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser

@@ -59,3 +59,8 @@ class GitHubClient:
         if not pr:
             pr = self.repo.get_pull(pr_number)
         pr.edit(state="closed")
+
+    def update_branch(self, pr_number: int) -> bool:
+        """Update a Pull Request branch with the base branch."""
+        pr = self.repo.get_pull(pr_number)
+        return pr.update_branch()

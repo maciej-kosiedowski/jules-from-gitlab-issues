@@ -33,6 +33,7 @@ def main():
             pr_sync.sync_github_to_gitlab()
             pr_sync.sync_gitlab_closures_to_github()
             pr_sync.check_prs_for_rebase_and_conflicts()
+            pr_sync.process_flow_e()
 
             logger.info(f"Cycle complete. Sleeping for {settings.POLLING_INTERVAL} seconds.")
             time.sleep(settings.POLLING_INTERVAL)

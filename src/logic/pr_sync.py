@@ -164,3 +164,21 @@ class PRSync:
                     pr.create_issue_comment(request_message)
                 except Exception as e:
                     logger.error(f"Failed to post comment on PR #{pr.number}: {e}")
+
+    def process_flow_e(self):
+        """Flow E: Check if GitHub PRs can be updated (merged from base) and do so if no conflicts."""
+        logger.info("Executing Flow E: Checking for outdated PRs...")
+        prs = self.gh_client.get_pull_requests(state="open")
+
+        for pr in prs:
+            if pr.mergeable_state == 'behind':
+                logger.info(f"PR #{pr.number} is behind base branch. Attempting update via API...")
+                try:
+                    if self.gh_client.update_branch(pr.number):
+                        logger.info(f"Successfully updated PR #{pr.number}.")
+                    else:
+                        logger.error(f"Failed to update PR #{pr.number}.")
+                except Exception as e:
+                    logger.error(f"Error updating PR #{pr.number}: {e}")
+            elif pr.mergeable_state == 'dirty':
+                logger.info(f"PR #{pr.number} has conflicts. Skipping update.")
