@@ -42,8 +42,7 @@ class JulesClient:
                     return self._cached_source_name
         except Exception as e:
             logger.error(f"Error fetching sources: {e}")
-        self._cached_source_name = f"sources/github/{settings.GITHUB_REPO}"
-        return self._cached_source_name
+        return f"sources/github/{settings.GITHUB_REPO}"
 
     def create_session(self, prompt: str, title: str, branch: str = "main", attachments: Optional[List[Dict]] = None) -> Optional[Dict]:
         source_name = self.get_source_name()
