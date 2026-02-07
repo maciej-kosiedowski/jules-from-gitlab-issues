@@ -18,13 +18,13 @@ class TestFlowE(unittest.TestCase):
         mock_pr.mergeable_state = 'behind'
 
         self.mock_gh_client.get_pull_requests.return_value = [mock_pr]
-        self.mock_gh_client.rebase_pr.return_value = True
+        self.mock_gh_client.update_branch.return_value = True
 
         # Execute
         self.pr_sync.process_flow_e()
 
-        # Assert rebase_pr was called
-        self.mock_gh_client.rebase_pr.assert_called_once_with(123)
+        # Assert update_branch was called
+        self.mock_gh_client.update_branch.assert_called_once_with(123)
 
     def test_process_flow_e_no_update_needed(self):
         # Setup mock PR that is clean
@@ -37,8 +37,8 @@ class TestFlowE(unittest.TestCase):
         # Execute
         self.pr_sync.process_flow_e()
 
-        # Assert rebase_pr was NOT called
-        self.mock_gh_client.rebase_pr.assert_not_called()
+        # Assert update_branch was NOT called
+        self.mock_gh_client.update_branch.assert_not_called()
 
     def test_process_flow_e_conflict(self):
         # Setup mock PR that has conflicts
@@ -51,5 +51,5 @@ class TestFlowE(unittest.TestCase):
         # Execute
         self.pr_sync.process_flow_e()
 
-        # Assert rebase_pr was NOT called
-        self.mock_gh_client.rebase_pr.assert_not_called()
+        # Assert update_branch was NOT called
+        self.mock_gh_client.update_branch.assert_not_called()
