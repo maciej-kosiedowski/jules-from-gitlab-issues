@@ -62,7 +62,7 @@ class PRSync:
 
             logger.info(f"Syncing GitHub PR #{pr.number} to GitLab MR")
 
-            files = self.gh_client.get_pr_diff(pr.number)
+            files = self.gh_client.get_pr_diff(pr.number, pr=pr)
             actions = []
 
             for f in files:

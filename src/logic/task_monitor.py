@@ -91,8 +91,7 @@ class TaskMonitor:
                         logger.info(f"GitLab issue #{issue.iid} already has an open MR. Skipping delegation.")
                         continue
                     logger.info(f"Delegating GitLab issue #{issue.iid} to Jules")
-                    guidelines = self.gl_client.get_file_content("CONTRIBUTING.md") or \
-                                 self.gl_client.get_file_content("GUIDELINES.md") or ""
+                    guidelines = self.gl_client.get_file_content("AGENTS.md") or  ""
 
                     history_text, attachments = self._prepare_attachments_and_history(issue)
 
@@ -137,7 +136,7 @@ class TaskMonitor:
                         if session:
                             session_id = session.get("id")
                             self.db.add_session(session_id, str(pr.number), "github_pr", github_pr_id=pr.number)
-                            self.gh_client.add_pr_comment(pr.number, f"Jules AI has started working on fixing this PR. Session ID: {session_id}")
+                            self.gh_client.add_pr_comment(pr.number, f"Jules AI has started working on fixing this PR. Session ID: {session_id}", pr=pr)
                             active_count += 1
 
     def monitor_active_sessions(self):

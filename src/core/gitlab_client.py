@@ -79,7 +79,10 @@ class GitLabClient:
         try:
             target_url = url
             if url.startswith("/"):
-                target_url = f"{settings.GITLAB_URL.rstrip('/')}/{url.lstrip('/')}"
+                if url.startswith("/uploads/"):
+                    target_url = f"{self.project.web_url.rstrip('/')}/{url.lstrip('/')}"
+                else:
+                    target_url = f"{settings.GITLAB_URL.rstrip('/')}/{url.lstrip('/')}"
 
             # Use the requests session from python-gitlab
             response = self.gl.session.get(target_url)

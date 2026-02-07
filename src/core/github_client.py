@@ -1,3 +1,4 @@
+from typing import Any
 from github import Github
 from src.config import settings
 
@@ -41,17 +42,20 @@ class GitHubClient:
         except UnicodeDecodeError:
             return content
 
-    def get_pr_diff(self, pr_number: int):
+    def get_pr_diff(self, pr_number: int, pr: Any = None):
         """Get the files changed in a Pull Request."""
-        pr = self.repo.get_pull(pr_number)
+        if not pr:
+            pr = self.repo.get_pull(pr_number)
         return pr.get_files()
 
-    def add_pr_comment(self, pr_number: int, message: str):
+    def add_pr_comment(self, pr_number: int, message: str, pr: Any = None):
         """Add a comment to a Pull Request."""
-        pr = self.repo.get_pull(pr_number)
+        if not pr:
+            pr = self.repo.get_pull(pr_number)
         pr.create_issue_comment(message)
 
-    def close_pr(self, pr_number: int):
+    def close_pr(self, pr_number: int, pr: Any = None):
         """Close a Pull Request."""
-        pr = self.repo.get_pull(pr_number)
+        if not pr:
+            pr = self.repo.get_pull(pr_number)
         pr.edit(state="closed")
