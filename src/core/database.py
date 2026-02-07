@@ -1,7 +1,7 @@
 import sqlite3
 import os
 from enum import Enum
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Set
 from src.utils.logger import logger
 
 class SessionStatus(str, Enum):
@@ -84,6 +84,13 @@ class Database:
                 (str(task_id), task_type)
             )
             return cursor.fetchone()
+
+    def get_all_task_ids(self, task_type: str) -> Set[str]:
+        """Fetch all task IDs for a given task type."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT task_id FROM sessions WHERE task_type = ?", (task_type,))
+            return {row[0] for row in cursor.fetchall()}
 
     # Methods for synced_prs
 
