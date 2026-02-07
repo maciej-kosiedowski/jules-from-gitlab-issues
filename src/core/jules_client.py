@@ -16,6 +16,7 @@ class JulesClient:
         }
         self.active_sessions_count = 0
         self._lock = threading.Lock()
+        self._cached_source_name: Optional[str] = None
 
     def _get(self, endpoint: str, params: Optional[Dict] = None):
         response = requests.get(f"{self.BASE_URL}/{endpoint}", headers=self.headers, params=params, timeout=30)
@@ -29,15 +30,20 @@ class JulesClient:
 
     def get_source_name(self) -> Optional[str]:
         """Find the source name for the configured GitHub repo."""
+        if self._cached_source_name:
+            return self._cached_source_name
+
         try:
             sources = self._get("sources").get("sources", [])
             owner_repo = settings.GITHUB_REPO.lower()
             for source in sources:
                 if source.get("id", "").lower() == f"github/{owner_repo}":
-                    return source.get("name")
+                    self._cached_source_name = source.get("name")
+                    return self._cached_source_name
         except Exception as e:
             logger.error(f"Error fetching sources: {e}")
-        return f"sources/github/{settings.GITHUB_REPO}"
+        self._cached_source_name = f"sources/github/{settings.GITHUB_REPO}"
+        return self._cached_source_name
 
     def create_session(self, prompt: str, title: str, branch: str = "main", attachments: Optional[List[Dict]] = None) -> Optional[Dict]:
         source_name = self.get_source_name()
