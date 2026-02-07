@@ -11,6 +11,7 @@ class TestSyncLogic(unittest.TestCase):
         # Mock database return values
         self.mock_db.get_all_synced_prs.return_value = {}
         self.mock_db.get_gl_issue_id_by_gh_pr.return_value = None
+        self.mock_db.get_all_session_issue_ids.return_value = {}
 
         # Use a temporary state file for migration tests
         self.state_file = "data/test_sync.json"
@@ -68,7 +69,7 @@ class TestSyncLogic(unittest.TestCase):
         self.mock_gh.get_pull_requests.return_value = [mock_pr]
 
         # Mock DB lookup success
-        self.mock_db.get_gl_issue_id_by_gh_pr.return_value = 456
+        self.mock_db.get_all_session_issue_ids.return_value = {123: 456}
 
         # Mock files
         mock_file = MagicMock()
