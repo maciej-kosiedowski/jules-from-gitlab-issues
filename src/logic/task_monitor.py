@@ -125,7 +125,7 @@ class TaskMonitor:
                     if session:
                         session_id = session.get("id")
                         self.db.add_session(session_id, str(pr.number), "github_pr", github_pr_id=pr.number)
-                        self.gh_client.add_pr_comment(pr.number, f"Jules AI has started working on fixing this PR. Session ID: {session_id}")
+                        self.gh_client.add_pr_comment(pr.number, f"Jules AI has started working on fixing this PR. Session ID: {session_id}", pr=pr)
                         active_count += 1
 
     def monitor_active_sessions(self):
