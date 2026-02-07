@@ -75,18 +75,21 @@ class TaskMonitor:
 
         logger.info("Checking for new GitLab tasks with 'AI' label...")
         issues = self.gl_client.get_open_ai_issues()
+
+        # Optimize: Fetch all existing sessions for GitLab issues at once
+        existing_gl_sessions = self.db.get_all_task_ids("gitlab_issue")
+
         for issue in issues:
             if active_count >= settings.JULES_MAX_CONCURRENT_SESSIONS:
                 logger.warning(f"Max concurrent Jules sessions reached ({active_count}).")
                 break
 
-            if not self.db.get_session_by_task(issue.iid, "gitlab_issue"):
+            if str(issue.iid) not in existing_gl_sessions:
                 if self.gl_client.has_open_mr(issue.iid):
                     logger.info(f"GitLab issue #{issue.iid} already has an open MR. Skipping delegation.")
                     continue
                 logger.info(f"Delegating GitLab issue #{issue.iid} to Jules")
-                guidelines = self.gl_client.get_file_content("CONTRIBUTING.md") or \
-                             self.gl_client.get_file_content("GUIDELINES.md") or ""
+                guidelines = self.gl_client.get_file_content("CONTRIBUTING.md") or                              self.gl_client.get_file_content("GUIDELINES.md") or ""
 
                 history_text, attachments = self._prepare_attachments_and_history(issue)
 
@@ -105,16 +108,21 @@ class TaskMonitor:
                 if session:
                     session_id = session.get("id")
                     self.db.add_session(session_id, str(issue.iid), "gitlab_issue")
+                    existing_gl_sessions.add(str(issue.iid))
                     active_count += 1
 
         logger.info("Checking for RED GitHub Pull Requests...")
         prs = self.gh_client.get_pull_requests(state="open")
+
+        # Optimize: Fetch all existing sessions for GitHub PRs at once
+        existing_gh_sessions = self.db.get_all_task_ids("github_pr")
+
         for pr in prs:
             if active_count >= settings.JULES_MAX_CONCURRENT_SESSIONS:
                 logger.warning(f"Max concurrent Jules sessions reached ({active_count}).")
                 break
 
-            if not self.db.get_session_by_task(pr.number, "github_pr"):
+            if str(pr.number) not in existing_gh_sessions:
                 status = self.gh_client.get_pr_status(pr.head.sha)
                 if status == "failure":
                     logger.info(f"PR #{pr.number} is RED. Delegating fix to Jules.")
@@ -126,6 +134,7 @@ class TaskMonitor:
                         session_id = session.get("id")
                         self.db.add_session(session_id, str(pr.number), "github_pr", github_pr_id=pr.number)
                         self.gh_client.add_pr_comment(pr.number, f"Jules AI has started working on fixing this PR. Session ID: {session_id}")
+                        existing_gh_sessions.add(str(pr.number))
                         active_count += 1
 
     def monitor_active_sessions(self):
