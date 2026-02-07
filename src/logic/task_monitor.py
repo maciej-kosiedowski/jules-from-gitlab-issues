@@ -89,7 +89,7 @@ class TaskMonitor:
                     logger.info(f"GitLab issue #{issue.iid} already has an open MR. Skipping delegation.")
                     continue
                 logger.info(f"Delegating GitLab issue #{issue.iid} to Jules")
-                guidelines = self.gl_client.get_file_content("CONTRIBUTING.md") or                              self.gl_client.get_file_content("GUIDELINES.md") or ""
+                guidelines = self.gl_client.get_file_content("AGENTS.md") or ""
 
                 history_text, attachments = self._prepare_attachments_and_history(issue)
 

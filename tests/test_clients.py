@@ -57,3 +57,26 @@ def test_jules_client_sessions(mock_get, mock_post):
 
     session = client.create_session("test task", "title")
     assert session["id"] == "sess_1"
+
+@patch("src.core.gitlab_client.gitlab.Gitlab")
+@patch("src.core.gitlab_client.settings")
+def test_gitlab_client_download(mock_settings, mock_gitlab):
+    mock_project = MagicMock()
+    mock_gitlab.return_value.projects.get.return_value = mock_project
+    mock_project.web_url = "https://gitlab.com/group/project"
+
+    mock_settings.GITLAB_URL = "https://gitlab.com"
+    mock_settings.GITLAB_TOKEN = "token"
+    mock_settings.GITLAB_PROJECT_ID = 123
+
+    client = GitLabClient()
+
+    # Case 1: Uploads URL
+    client.download_file("/uploads/123/image.png")
+    args, _ = mock_gitlab.return_value.session.get.call_args
+    assert args[0] == "https://gitlab.com/group/project/uploads/123/image.png"
+
+    # Case 2: Other relative path
+    client.download_file("/api/v4/users")
+    args, _ = mock_gitlab.return_value.session.get.call_args
+    assert args[0] == "https://gitlab.com/api/v4/users"
