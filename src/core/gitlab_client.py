@@ -91,6 +91,7 @@ class GitLabClient:
         except Exception as e:
             logger.error(f"Error downloading file from {url}: {e}")
             return None
+
     def commit_changes(self, branch_name: str, commit_message: str, actions: list):
         """
         Create a commit with multiple file actions.
@@ -108,3 +109,23 @@ class GitLabClient:
         except Exception as e:
             logger.error(f"Error committing changes to {branch_name}: {e}")
             return False
+
+    def close_mr(self, mr_iid: int):
+        """Close a Merge Request."""
+        try:
+            mr = self.project.mergerequests.get(mr_iid)
+            mr.state_event = "close"
+            mr.save()
+            logger.info(f"Closed GitLab MR !{mr_iid}")
+        except Exception as e:
+            logger.error(f"Error closing MR !{mr_iid}: {e}")
+
+    def close_issue(self, issue_iid: int):
+        """Close an Issue."""
+        try:
+            issue = self.project.issues.get(issue_iid)
+            issue.state_event = "close"
+            issue.save()
+            logger.info(f"Closed GitLab Issue #{issue_iid}")
+        except Exception as e:
+            logger.error(f"Error closing Issue #{issue_iid}: {e}")

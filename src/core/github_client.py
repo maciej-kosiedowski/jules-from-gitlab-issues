@@ -59,3 +59,7 @@ class GitHubClient:
         if not pr:
             pr = self.repo.get_pull(pr_number)
         pr.edit(state="closed")
+
+    def get_pull_request(self, pr_number: int) -> Any:
+        """Get a single Pull Request object."""
+        return self.repo.get_pull(pr_number)
