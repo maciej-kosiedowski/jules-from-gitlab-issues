@@ -133,6 +133,36 @@ class PRSync:
                 except Exception as e:
                     logger.error(f"Failed to close GitHub PR #{gh_pr_id}: {e}")
 
+    def sync_github_merges_to_gitlab(self):
+        """Sync merged GitHub PRs to close GitLab MRs and Issues."""
+        logger.info("Checking for merged GitHub PRs to sync to GitLab...")
+        synced_prs = self.db.get_all_synced_prs()
+
+        for gh_pr_id, gl_mr_iid in synced_prs.items():
+            # Skip if mapped to 0 (legacy/invalid)
+            if gl_mr_iid == 0:
+                continue
+
+            try:
+                pr = self.gh_client.get_pull_request(gh_pr_id)
+                if pr.merged:
+                    logger.info(f"GitHub PR #{gh_pr_id} is merged. Closing GitLab resources...")
+
+                    # Close GitLab MR
+                    self.gl_client.close_mr(gl_mr_iid)
+
+                    # Close GitLab Issue
+                    gl_issue_id = self.db.get_gl_issue_id_by_gh_pr(gh_pr_id)
+                    if gl_issue_id:
+                        self.gl_client.close_issue(gl_issue_id)
+                    else:
+                        logger.warning(f"No GitLab Issue ID found for GitHub PR #{gh_pr_id}")
+
+                    # Stop tracking this PR since it's done
+                    self.db.delete_synced_pr(gh_pr_id)
+            except Exception as e:
+                logger.error(f"Error syncing merge status for GitHub PR #{gh_pr_id}: {e}")
+
     def check_prs_for_rebase_and_conflicts(self):
         """Check all open PRs (including drafts) for merge conflicts and request fixes."""
         logger.info("Checking for PRs with merge conflicts...")
