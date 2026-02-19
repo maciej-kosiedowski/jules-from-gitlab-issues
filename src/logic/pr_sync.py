@@ -39,6 +39,7 @@ class PRSync:
         logger.info("Checking for GitHub PRs to sync to GitLab...")
         prs = self.gh_client.get_pull_requests(state="open")
         synced_prs = self.db.get_all_synced_prs()
+        session_issues = self.db.get_all_session_issue_ids()
 
         for pr in prs:
             if pr.draft:
@@ -49,7 +50,7 @@ class PRSync:
 
             # Detect GitLab Issue ID
             # Priority 1: Check database (sessions or synced_prs)
-            gl_issue_id = self.db.get_gl_issue_id_by_gh_pr(pr.number)
+            gl_issue_id = session_issues.get(pr.number)
 
             # Priority 2: Regex on title
             if not gl_issue_id:

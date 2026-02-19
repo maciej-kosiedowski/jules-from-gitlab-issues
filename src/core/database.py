@@ -174,6 +174,22 @@ class Database:
             finally:
                 cursor.close()
 
+    def get_all_session_issue_ids(self) -> Dict[int, int]:
+        """Returns a dict mapping GitHub PR IDs to GitLab Issue IDs from sessions."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Select task_id (which is issue_id for gitlab_issue task type)
+            cursor.execute(
+                "SELECT github_pr_id, task_id FROM sessions WHERE task_type = 'gitlab_issue' AND github_pr_id IS NOT NULL"
+            )
+            result = {}
+            for row in cursor.fetchall():
+                try:
+                    result[row[0]] = int(row[1])
+                except ValueError:
+                    continue
+            return result
+
     def get_gl_issue_id_by_gh_pr(self, github_pr_id: int) -> Optional[int]:
         """Try to find the GitLab issue ID associated with a GitHub PR ID."""
         with self._lock:
